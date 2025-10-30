@@ -1,0 +1,191 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+
+# Virtual Environment
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Pytest
+.pytest_cache/
+
+# Logs
+venv.bak/
+.venv/
+
+# Logs
+*.log
+
+# Jupyter Notebook checkpoints
+
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDE
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# VS Code
+.vscode/
+
+# OS files
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data artifacts
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+
+# Data artifacts
+*.csv
+*.json
+
+# Model artifacts
+logs/
+*.log
+
+# Data files
+data/
+datasets/
+*.csv
+
+# Model artifacts
+models/*.pkl
+models/*_metadata.json
+models/validation_report_*.json
+models/latest_model.json
+
+# Ignore secrets
+*.json
+!config.json
+
+# Ignore secrets
+config.json
+nonexistent_config.json
+!**/config.json
+
+# Model files
+models/
+*.pkl
+*.joblib
+*.h5
+*.pb
+*.pth
+*.onnx
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Docker
+Dockerfile.tmp
+docker-compose.override.yml
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Documentation
+docs/_build/
+
+# Security
+secrets.yml
+*.pem
+*.key
+*.crt
+
+# Monitoring
+prometheus_data/
+grafana_data/
+
+# CI/CD
+.github/workflows/secrets/
+
+# MLOps
+mlruns/
+.mlflow/
+artifacts/
+experiments/
+
+# Cloud credentials
+.aws/
+.gcp/
+.azure/
+
+# Backup files
+*.bak
+*.backup
