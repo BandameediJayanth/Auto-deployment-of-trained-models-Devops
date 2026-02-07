@@ -128,18 +128,18 @@ class TestModelValidator:
         
     def test_validator_initialization(self):
         """Test ModelValidator initialization"""
-        model_path = 'models/test_model_v1.0.0.pkl'
-        validator = ModelValidator(model_path=model_path)
+        validator = ModelValidator()
+        
         assert validator.model is None
         assert validator.metadata is None
         assert validator.validation_results == {}
         assert 'min_accuracy' in validator.thresholds
         
-    def test_load_model(self):
-        """Test loading model"""
-        model_path = 'models/test_model_v1.0.0.pkl'
-        validator = ModelValidator(model_path=model_path)
-        success = validator.load_model()
+    def test_load_latest_model(self):
+        """Test loading latest model"""
+        validator = ModelValidator()
+        success = validator.load_latest_model()
+        
         assert success is True
         assert validator.model is not None
         assert validator.metadata is not None
@@ -147,30 +147,32 @@ class TestModelValidator:
         
     def test_validate_model_structure(self):
         """Test model structure validation"""
-        model_path = 'models/test_model_v1.0.0.pkl'
-        validator = ModelValidator(model_path=model_path)
-        validator.load_model()
+        validator = ModelValidator()
+        validator.load_latest_model()
+        
         is_valid = validator.validate_model_structure()
         assert is_valid is True
         
     def test_validate_model_performance(self):
         """Test model performance validation"""
-        model_path = 'models/test_model_v1.0.0.pkl'
-        validator = ModelValidator(model_path=model_path)
-        validator.load_model()
+        validator = ModelValidator()
+        validator.load_latest_model()
+        
         X, y = validator.load_test_data()
         validations, metrics = validator.validate_model_performance(X, y)
+        
         assert 'accuracy_threshold' in validations
         assert 'accuracy' in metrics
         assert metrics['accuracy'] > 0
         
     def test_validate_prediction_capability(self):
         """Test prediction capability validation"""
-        model_path = 'models/test_model_v1.0.0.pkl'
-        validator = ModelValidator(model_path=model_path)
-        validator.load_model()
+        validator = ModelValidator()
+        validator.load_latest_model()
+        
         X, y = validator.load_test_data()
         validations = validator.validate_prediction_capability(X)
+        
         assert validations['can_predict'] is True
         assert validations['prediction_shape_correct'] is True
 
@@ -341,29 +343,35 @@ class TestIntegration:
         """Test complete training -> validation -> prediction pipeline"""
         temp_dir = tempfile.mkdtemp()
         original_dir = os.getcwd()
+        
         try:
             os.chdir(temp_dir)
+            
             # Create directories
             os.makedirs('models', exist_ok=True)
             os.makedirs('data', exist_ok=True)
+            
             # Step 1: Train model
             trainer = ModelTrainer("integration_test", "1.0.0")
             success = trainer.run_training_pipeline()
             assert success is True
+            
             # Step 2: Validate model
-            model_path = 'models/integration_test_v1.0.0.pkl'
-            validator = ModelValidator(model_path=model_path)
-            validator.load_model()
+            validator = ModelValidator()
             success = validator.run_validation_pipeline()
             assert success is True
+            
             # Step 3: Test model loading and prediction
             with open('models/latest_model.json', 'r') as f:
                 latest_info = json.load(f)
+            
             model = joblib.load(latest_info['latest_model'])
             test_input = np.random.randn(1, 20)  # Default is 20 features
             prediction = model.predict(test_input)
+            
             assert prediction is not None
             assert len(prediction) == 1
+            
         finally:
             os.chdir(original_dir)
             shutil.rmtree(temp_dir)

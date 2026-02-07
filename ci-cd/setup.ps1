@@ -56,4 +56,3 @@ Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "1. Activate the virtual environment: .\venv\Scripts\Activate.ps1" -ForegroundColor White
 Write-Host "2. Start with Phase 1: Model Development" -ForegroundColor White
 Write-Host "3. Run: python src/train_model.py" -ForegroundColor White
-

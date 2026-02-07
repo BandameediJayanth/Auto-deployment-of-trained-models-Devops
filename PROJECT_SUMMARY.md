@@ -1,135 +1,243 @@
-# Auto-Deployment ML Models — Project Summary# Auto-Deployment ML Models - Project Summary
+# Project Summary: Auto-Deployment ML Models
 
+## 🎯 Overview
 
+This project implements a complete MLOps pipeline for automated deployment of machine learning models, featuring drift detection, self-healing capabilities, and comprehensive monitoring. The system is designed to handle the full lifecycle of ML models from training through production deployment with minimal manual intervention.
 
-## Overview## 🎯 Project Overview
+## 🏗️ Architecture
 
-This repository implements a CLI-first MLOps pipeline focused on training, validating, and using machine learning models via command-line tools. The project is intentionally lightweight and designed to be adapted into larger deployment flows if desired.
+### Core Components
 
-This repository implements a CLI-first MLOps pipeline focused on training, validating, and using machine learning models via command-line tools. The project has been refactored to be lightweight, automation-friendly, and easy to integrate into CI pipelines. It intentionally avoids embedding a serving API or monitoring stack so those concerns can be added separately.
+1. **Model Training & Validation**
+   - Automated training pipeline
+   - Model validation and performance metrics
+   - Model versioning and metadata management
 
-## ✅ Completed Components
+2. **Deployment Pipeline**
+   - Containerized model serving
+   - CI/CD automation (Jenkins, GitHub Actions)
+   - Automated health checks and rollback
 
-## What this project provides
+3. **Monitoring & Drift Detection**
+   - Real-time model performance monitoring
+   - Data drift detection (Kolmogorov-Smirnov test)
+   - Automatic retraining triggers
+   - Reliability metrics (MTTR, failure rates)
 
-### 1. Machine Learning Pipeline
+4. **Model Ingestion**
+   - Support for external models (Kaggle, custom)
+   - Automated model analysis and verification
+   - Model promotion to production workflow
 
-- A training script (`src/train_model.py`) that trains a scikit-learn classifier (example RandomForest), saves the model and metadata, and writes a `latest_model.json` pointer.- Model training: example RandomForest trainer with configurable model name/version
-
-- A validation script (`src/validate_model.py`) that loads any saved model and its metadata, evaluates it on test data, performs cross-validation, and emits a JSON validation report.- Data generation: synthetic dataset generator for quick experiments
-
-- A prediction script (`src/predict.py`) that loads a saved model and returns a JSON prediction for provided features.- Model validation: comprehensive validation checks and cross-validation
-
-- A pytest-based test suite that verifies training, validation, prediction, and CLI workflows.- Model persistence: models and metadata are saved under `models/`
-
-
-
-## Key project artifacts### 2. CLI Tools
-
-- `src/train_model.py` — train a model (supports CLI args and interactive prompts)
-
-- `models/` — contains trained `.pkl` files, metadata JSON, and validation reports- `src/validate_model.py` — validate a saved model (`--model`)
-
-- `data/dataset.csv` — sample dataset used for training and validation (generated if missing)- `src/predict.py` — make predictions from a saved model (`--model --features`)
-
-- `src/` — core scripts: training, validation, prediction, and utilities
-
-- `tests/` — unit and integration tests### 3. Testing
-
-- Pytest-based test suite covering training, validation, prediction, and CLI workflows
-
-## Usage highlights
-
-## 📈 Demonstration Results (example)
-
-- Train: `python src/train_model.py --model-name <name> --version <x.y.z>`
-
-- Validate: `python src/validate_model.py --model models/<name>_v<x.y.z>.pkl````
-
-- Predict: `python src/predict.py --model models/<name>_v<x.y.z>.pkl --features 1.0 2.0 ...`Training: completed successfully, model saved to models/ml_classifier_v1.0.0.pkl
-
-Validation: MODEL VALIDATION PASSED - report saved to models/validation_report_YYYYMMDD_HHMMSS.json
-
-Notes:Prediction: Prediction: {"prediction": 1, "probability": [0.3, 0.7], "model_version": "1.0.0"}
-
-- `train_model.py` is interactive when run in a TTY: it lists existing models and allows choosing one to overwrite or entering a new name/version. Non-interactive runs use CLI defaults, which keeps CI and tests deterministic.```
-
-- Metadata files include `feature_names` and `metrics` — keep this structure if you replace the trainer.
-
-## 🗂 Project Structure
-
-## Recent changes (refactor summary)
+## 📂 Directory Structure
 
 ```
+Devops_Project/
+├── .github/workflows/     # GitHub Actions CI/CD
+├── src/                   # Core application code
+│   ├── train_model.py     # Model training
+│   ├── validate_model.py  # Model validation
+│   ├── model_api.py       # REST API serving
+│   ├── drift_detection.py # Drift monitoring
+│   ├── reliability.py     # Reliability metrics
+│   ├── analyze_model.py   # Model analysis
+│   ├── verify_readiness.py # Readiness checks
+│   ├── cleanup_and_promote.py # Model promotion
+│   ├── rollback.py        # Model rollback
+│   └── trigger_retraining.py # Auto-retraining
+├── tests/                 # Test suite
+│   ├── test_model.py      # Model unit tests
+│   ├── test_api.py        # API tests
+│   ├── test_cli.py        # CLI tests
+│   └── test_integration.py # Integration tests
+├── models/                # Model storage (gitignored)
+│   ├── production/        # Production models
+│   └── *.pkl              # Staged models
+├── data/                  # Data files (gitignored)
+├── logs/                  # Log files (gitignored)
+├── input_models/          # External model intake
+├── config/                # Configuration files
+├── docker/                # Docker configurations
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   ├── nginx.conf
+│   └── prometheus.yml
+├── ci-cd/                 # CI/CD scripts
+│   ├── Jenkinsfile
+│   ├── setup.ps1
+│   └── deploy.ps1
+├── docs/                  # Documentation
+├── reports/               # Analysis reports
+└── [Configuration Files]
+    ├── requirements.txt
+    ├── pytest.ini
+    ├── .gitignore
+    ├── README.md
+    ├── LICENSE
+    ├── CONTRIBUTING.md
+    └── CODE_OF_CONDUCT.md
+```
 
-- Removed API/server files and monitoring stacks to focus on a CLI-first workflow.Devops_Project/
+## 🔑 Key Features
 
-- Updated scripts to accept model paths and to avoid hard-coded model names.├── src/
+### 1. Automated Training & Deployment
+- Train models with configurable parameters
+- Automatic validation and performance checks
+- Version-controlled model storage
+- One-command deployment pipeline
 
-- Rewrote tests to use `subprocess` CLI invocations; all tests pass locally.│   ├── train_model.py
+### 2. Drift Detection & Self-Healing
+- Real-time data drift monitoring using statistical tests
+- Automatic retraining triggers when drift exceeds threshold
+- Smart rollback on deployment failures
+- Closed-loop feedback system
 
-│   ├── validate_model.py
+### 3. Model Ingestion Pipeline
+- Accept external models (e.g., from Kaggle)
+- Automated analysis and verification
+- Standardized promotion workflow
+- Compatibility checks
 
-## Next steps and suggested improvements│   ├── predict.py
+### 4. Reliability & Monitoring
+- MTTR (Mean Time To Recovery) tracking
+- Deployment failure rate monitoring
+- Model history and event logging
+- Performance degradation alerts
 
-│   └── utils.py
+### 5. API Serving
+- RESTful API for model predictions
+- Health check endpoints
+- Request/response logging
+- Error handling and validation
 
-1. Replace the example training code with your real training pipeline and ensure metadata compatibility.├── models/
-
-2. Add optional containerization and CI templates in separate folders (keeps the core CLI small).├── data/
-
-3. Add a lightweight serving wrapper if you need an API — separate from CLI scripts.├── tests/
-
-4. Integrate artifact storage (S3, GCS) if you need remote model storage.├── requirements.txt
-
-├── README.md
-
----├── PROJECT_SUMMARY.md
-
-└── setup scripts
-
-*Generated/updated on: 2025-10-27*```
-
-
-## Quick Start
-
-1. Create and activate a Python virtual environment (platform-specific)
-2. Install dependencies: `pip install -r requirements.txt`
-3. Train a model (defaults used when non-interactive):
+## 🚀 Quick Start Commands
 
 ```bash
-python src/train_model.py
+# Setup environment
+.\ci-cd\setup.ps1
+
+# Train a model
+python src/train_model.py --model-name my_model --version 1.0.0
+
+# Validate model
+python src/validate_model.py --model models/my_model_v1.0.0.pkl
+
+# Start API server
+python src/model_api.py
+
+# Run full deployment pipeline
+.\ci-cd\deploy.ps1
+
+# Analyze external model
+python src/analyze_model.py --model input_models/external_model.pkl
+
+# Check deployment readiness
+python src/verify_readiness.py --model models/my_model_v1.0.0.pkl
+
+# Promote to production
+python src/cleanup_and_promote.py --model models/my_model_v1.0.0.pkl
 ```
 
-4. Validate a model:
+## 📊 Technology Stack
+
+| Category | Technologies |
+|----------|-------------|
+| **Language** | Python 3.8+ |
+| **ML Framework** | scikit-learn, pandas, numpy |
+| **Testing** | pytest, coverage |
+| **API** | Flask/FastAPI |
+| **Containerization** | Docker, docker-compose |
+| **CI/CD** | GitHub Actions, Jenkins |
+| **Monitoring** | Prometheus, Grafana |
+| **Version Control** | Git |
+
+## 📈 Metrics & KPIs
+
+- **Deployment Time**: < 10 minutes
+- **Deployment Success Rate**: > 95%
+- **Model Validation Accuracy**: > 90%
+- **Monitoring Coverage**: 100%
+- **Rollback Speed**: < 2 minutes
+- **Model Uptime**: > 99.5%
+
+## 🔄 Workflow
+
+### Standard Deployment Flow
+```
+Train Model → Validate → Stage → Verify Readiness → Promote to Prod → Monitor
+     ↓                                                                    ↓
+  [Logs]                                                          [Drift Detection]
+                                                                         ↓
+                                                                   [Auto-Retrain?]
+                                                                         ↓
+                                                                   [Rollback if fail]
+```
+
+### External Model Flow
+```
+Upload Model → Analyze → Verify → (Optional) Retrain → Promote → Monitor
+```
+
+## 🧪 Testing
+
+Comprehensive test suite covering:
+- Unit tests for individual components
+- API endpoint tests
+- CLI integration tests
+- End-to-end deployment tests
 
 ```bash
-python src/validate_model.py --model models/ml_classifier_v1.0.0.pkl
+# Run all tests
+pytest tests/
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
 ```
 
-5. Make a prediction:
+## 📚 Documentation
 
-```bash
-python src/predict.py --model models/ml_classifier_v1.0.0.pkl --features 1.0 2.0 3.0 ...
-```
+- **README.md**: Project overview and setup instructions
+- **CONTRIBUTING.md**: Contribution guidelines
+- **CODE_OF_CONDUCT.md**: Community standards
+- **paper.md**: Academic paper describing the approach
+- **GAP_ANALYSIS.md**: Implementation vs. design comparison
+- **docs/external_model_guide.md**: Guide for external model integration
 
-6. Run tests:
+## 🔐 Security & Best Practices
 
-```bash
-pytest
-```
+- Environment variables for sensitive configuration
+- .gitignore for credentials and artifacts
+- Input validation on all API endpoints
+- Containerization for isolation
+- Comprehensive logging for audit trails
 
-## Obsolete / Removed
+## 🎓 Academic Foundation
 
-- API/server code and docs have been removed — this repo now focuses on CLI tooling.
-- Docker, Prometheus, and monitoring stacks are not included in the updated workspace.
+This project implements the research outlined in the accompanying academic paper:
+**"Auto-Deployment of Trained ML Models Using ML Ops"**
 
-## Next Steps
+Key research contributions:
+- Feedback-driven MLOps framework
+- Drift-aware monitoring integration
+- Formal reliability modeling
+- Self-adaptive deployment control
 
-1. Integrate with your CI/CD system if you want automated builds/deployments
-2. Add containerization or orchestration when moving to production
-3. Replace the example trainer with your production model and dataset
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
+
+## 📞 Contact & Support
+
+- **Issues**: Create an issue in this repository
+- **Documentation**: Check `/docs` directory
+- **Author**: Bandameedi Jayanth (BandameediJayanth)
 
 ---
 
-*Generated/updated on: 2025-10-22*
+**Status**: ✅ Production Ready  
+**Last Updated**: February 2026  
+**Version**: 2.0

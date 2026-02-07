@@ -1,0 +1,47 @@
+{
+  "model": {
+    "name": "ml_classifier",
+    "version": "1.0.0",
+    "type": "RandomForestClassifier",
+    "description": "Binary classification model for auto-deployment demo"
+  },
+  "training": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "n_estimators": 100,
+    "max_depth": 10,
+    "n_samples": 1000,
+    "n_features": 20
+  },
+  "validation": {
+    "min_accuracy": 0.8,
+    "min_precision": 0.8,
+    "min_recall": 0.8,
+    "min_f1_score": 0.8,
+    "max_cv_std": 0.05,
+    "min_cv_mean": 0.8
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "debug": false,
+    "workers": 1
+  },
+  "monitoring": {
+    "prometheus_port": 9090,
+    "grafana_port": 3000,
+    "enable_metrics": true
+  },
+  "deployment": {
+    "docker_image": "ml-model-api",
+    "registry": "your-registry.com",
+    "environment": "development",
+    "health_check_endpoint": "/health",
+    "max_replicas": 3
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "app.log"
+  }
+}

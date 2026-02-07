@@ -16,8 +16,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import make_classification
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import logging
-import argparse
-import sys
 
 # Configure logging
 logging.basicConfig(
@@ -36,21 +34,16 @@ class ModelTrainer:
         self.version = version
         self.model = None
         self.metrics = {}
-        self.last_model_path = None
-        self.last_metadata_path = None
         
     def generate_sample_data(self, n_samples=1000, n_features=20):
         """Generate sample dataset for demonstration"""
         logger.info(f"Generating sample dataset with {n_samples} samples and {n_features} features")
         
-        n_informative = max(1, int(n_features * 0.75))
-        n_redundant = n_features - n_informative
-        
         X, y = make_classification(
             n_samples=n_samples,
             n_features=n_features,
-            n_informative=n_informative,
-            n_redundant=n_redundant,
+            n_informative=15,
+            n_redundant=5,
             n_classes=2,
             random_state=42
         )
@@ -168,10 +161,27 @@ class ModelTrainer:
         
         with open('models/latest_model.json', 'w') as f:
             json.dump(latest_info, f, indent=2)
-
-        # store last saved paths on the trainer instance
-        self.last_model_path = model_path
-        self.last_metadata_path = metadata_path
+            
+        # Update model history
+        history_path = 'models/model_history.json'
+        history = []
+        if os.path.exists(history_path):
+            try:
+                with open(history_path, 'r') as f:
+                    history = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not load model history: {str(e)}")
+        
+        # Add new model to history if not already present
+        if not any(entry['version'] == self.version for entry in history):
+            history.append(latest_info)
+            # Sort by creation date (newest last)
+            history.sort(key=lambda x: x.get('created_at', ''))
+            
+            with open(history_path, 'w') as f:
+                json.dump(history, f, indent=2)
+            logger.info(f"Model history updated in {history_path}")
+        
         return model_path, metadata_path
     
     def run_training_pipeline(self):
@@ -205,75 +215,33 @@ class ModelTrainer:
             logger.error(f"Training pipeline failed: {str(e)}")
             return False
 
+import argparse
+
 def main():
     """Main function to run model training"""
-    parser = argparse.ArgumentParser(description='Train a machine learning model.')
-    parser.add_argument('--model-name', type=str, default='ml_classifier', help='Model name to save')
-    parser.add_argument('--version', type=str, default='1.0.0', help='Model version')
+    parser = argparse.ArgumentParser(description='Train ML Model')
+    parser.add_argument('--version', type=str, default="1.0.0", help='Model version')
+    parser.add_argument('--name', type=str, default="ml_classifier", help='Model name')
     args = parser.parse_args()
-
-    # If running interactively, allow choosing/entering model name and version
-    model_name = args.model_name
-    version = args.version
-    if sys.stdin.isatty():
-        try:
-            # List existing models as presets if available
-            existing = []
-            if os.path.exists('models'):
-                for fn in os.listdir('models'):
-                    if fn.endswith('.pkl'):
-                        existing.append(fn)
-
-            if existing:
-                print("Existing models:")
-                for i, fn in enumerate(existing, start=1):
-                    print(f"  {i}. {fn}")
-                print("  0. Enter new model name/version")
-                choice = input("Select a model to overwrite or 0 to enter new: ")
-                if choice.strip().isdigit() and int(choice) > 0 and int(choice) <= len(existing):
-                    sel = existing[int(choice) - 1]
-                    # derive model name and version from filename if possible
-                    base = sel.replace('.pkl', '')
-                    if '_v' in base:
-                        parts = base.split('_v')
-                        model_name = parts[0]
-                        version = parts[1]
-                    else:
-                        model_name = base
-                else:
-                    user_input = input(f"Model name [{model_name}]: ")
-                    if user_input.strip():
-                        model_name = user_input.strip()
-                    user_input = input(f"Version [{version}]: ")
-                    if user_input.strip():
-                        version = user_input.strip()
-            else:
-                user_input = input(f"Model name [{model_name}]: ")
-                if user_input.strip():
-                    model_name = user_input.strip()
-                user_input = input(f"Version [{version}]: ")
-                if user_input.strip():
-                    version = user_input.strip()
-        except Exception:
-            # If prompting fails for any reason, fall back to args/defaults
-            pass
-
+    
+    MODEL_NAME = args.name
+    VERSION = args.version
+    
     # Create trainer instance
-    trainer = ModelTrainer(model_name=model_name, version=version)
-
+    trainer = ModelTrainer(model_name=MODEL_NAME, version=VERSION)
+    
     # Run training pipeline
     success = trainer.run_training_pipeline()
     
     if success:
-        print("\nModel training completed successfully!")
-        saved_model = trainer.last_model_path if getattr(trainer, 'last_model_path', None) else f"models/{model_name}_v{version}.pkl"
-        saved_meta = trainer.last_metadata_path if getattr(trainer, 'last_metadata_path', None) else f"models/{model_name}_v{version}_metadata.json"
-        print(f"Model saved: {saved_model}")
-        print(f"Metadata saved: {saved_meta}")
-        print("Next steps:")
-        print(f"   1. Run model validation: python src/validate_model.py --model {saved_model}")
+        print("\n🎉 Model training completed successfully!")
+        print("📁 Check the 'models' directory for trained model files")
+        print("📊 Next steps:")
+        print("   1. Run model validation: python src/validate_model.py")
+        print("   2. Start API server: python src/model_api.py")
+        print("   3. Build Docker container: docker build -f docker/Dockerfile .")
     else:
-        print("\nModel training failed. Check the logs for details.")
+        print("\n❌ Model training failed. Check the logs for details.")
         exit(1)
 
 if __name__ == "__main__":

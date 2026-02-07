@@ -21,59 +21,19 @@ wheels/
 *.egg
 MANIFEST
 
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-
-# Virtual Environment
-
 # Virtual Environment
 venv/
 env/
 ENV/
 env.bak/
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
-
-# Pytest
-.pytest_cache/
-
-# Logs
 venv.bak/
 .venv/
 
-# Logs
-*.log
-
-# Jupyter Notebook checkpoints
-
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints
-
-# IDE
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# VS Code
-.vscode/
-
-# OS files
 *~
 
 # Jupyter Notebook
@@ -81,24 +41,12 @@ venv.bak/
 
 # Environment variables
 .env
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Data artifacts
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
 # Logs
-
-# Data artifacts
-*.csv
-*.json
-
-# Model artifacts
 logs/
 *.log
 
@@ -106,21 +54,10 @@ logs/
 data/
 datasets/
 *.csv
-
-# Model artifacts
-models/*.pkl
-models/*_metadata.json
-models/validation_report_*.json
-models/latest_model.json
-
-# Ignore secrets
 *.json
 !config.json
-
-# Ignore secrets
-config.json
-nonexistent_config.json
 !**/config.json
+!**/.gitkeep
 
 # Model files
 models/
