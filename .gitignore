@@ -49,6 +49,18 @@ venv.bak/
 # Logs
 logs/
 *.log
+*.log.*
+api_server.log
+canary_deployment.log
+drift_detection.log
+model_testing.log
+monitoring_service.log
+orchestrator.log
+retraining.log
+rollback.log
+training.log
+validation.log
+decision_engine.log
 
 # Data files
 data/
@@ -59,14 +71,22 @@ datasets/
 !**/config.json
 !**/.gitkeep
 
-# Model files
-models/
-*.pkl
-*.joblib
-*.h5
-*.pb
-*.pth
-*.onnx
+# Model files (keep structure, ignore actual models)
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.pb
+models/*.pth
+models/*.onnx
+models/production/
+models/test_results_*.json
+models/canary_state.json
+models/reliability_events.json
+models/decision_history.json
+models/monitoring_metrics.json
+!models/.gitkeep
+!models/latest_model.json
+!models/model_history.json
 
 # Testing
 .coverage

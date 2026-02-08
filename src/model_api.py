@@ -28,16 +28,26 @@ import uvicorn
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
-# Import Drift Detector and Reliability Tracker
+# Import Drift Detector, Reliability Tracker, Decision Engine, and Monitoring Service
 try:
     from src.drift_detection import DriftDetector
     from src.reliability import ReliabilityTracker
+    from src.decision_engine import PolicyEngine, DeploymentAction
+    from src.monitoring_service import MonitoringService, get_monitoring_service
 except ImportError:
     # Fallback for when running from different directory structure
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from src.drift_detection import DriftDetector
     from src.reliability import ReliabilityTracker
+    try:
+        from src.decision_engine import PolicyEngine, DeploymentAction
+        from src.monitoring_service import MonitoringService, get_monitoring_service
+    except ImportError:
+        PolicyEngine = None
+        DeploymentAction = None
+        MonitoringService = None
+        get_monitoring_service = None
 
 
 # Configure logging
@@ -127,9 +137,20 @@ class ModelManager:
         self.reliability_tracker = ReliabilityTracker()
         self.request_buffer = []
         self.buffer_size = 50 # Run drift detection every 50 requests
+        
+        # Initialize decision engine and monitoring service if available
+        self.decision_engine = PolicyEngine() if PolicyEngine else None
+        self.monitoring_service = get_monitoring_service() if get_monitoring_service else None
+        
+        # Start monitoring service if available
+        if self.monitoring_service:
+            try:
+                self.monitoring_service.start_monitoring()
+            except Exception as e:
+                logger.warning(f"Could not start monitoring service: {str(e)}")
     
     def check_drift_background(self, data_batch):
-        """Run drift detection on a batch of data"""
+        """Run drift detection on a batch of data and use decision engine"""
         try:
             if not self.feature_names:
                 return
@@ -142,7 +163,48 @@ class ModelManager:
                 DRIFT_SCORE.set(drift_score)
                 DRIFTED_FEATURES_COUNT.set(result["drifted_feature_count"])
                 
-                if result["drift_detected"]:
+                # Use decision engine if available
+                if self.decision_engine and self.monitoring_service:
+                    # Get current metrics
+                    metrics = self.monitoring_service.get_metrics_summary()
+                    
+                    # Make decision based on drift and metrics
+                    decision = self.decision_engine.decide_action(
+                        metrics=metrics,
+                        drift_results=result
+                    )
+                    
+                    logger.info(f"Decision engine action: {decision['action']}")
+                    logger.debug(f"Reasoning: {decision['reasoning']}")
+                    
+                    # Execute action
+                    if decision['action'] == DeploymentAction.RETRAIN.value:
+                        try:
+                            logger.info("Decision engine: Triggering automated retraining...")
+                            subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
+                        except Exception as e:
+                            logger.error(f"Failed to trigger retraining: {str(e)}")
+                    
+                    elif decision['action'] == DeploymentAction.ROLLBACK.value:
+                        try:
+                            logger.warning("Decision engine: Triggering rollback...")
+                            subprocess.Popen([sys.executable, "src/rollback.py"])
+                        except Exception as e:
+                            logger.error(f"Failed to trigger rollback: {str(e)}")
+                    
+                    elif result["drift_detected"]:
+                        # Fallback to old behavior if decision engine not available
+                        logger.warning(f"Drift detected! Score: {drift_score:.2f}")
+                        self.reliability_tracker.log_event("failure", {"reason": "drift_detected", "score": drift_score})
+                        
+                        # Trigger retraining
+                        try:
+                            logger.info("Triggering automated retraining...")
+                            subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
+                        except Exception as e:
+                            logger.error(f"Failed to trigger retraining: {str(e)}")
+                elif result["drift_detected"]:
+                    # Fallback to old behavior if decision engine not available
                     logger.warning(f"Drift detected! Score: {drift_score:.2f}")
                     self.reliability_tracker.log_event("failure", {"reason": "drift_detected", "score": drift_score})
                     
@@ -150,7 +212,6 @@ class ModelManager:
                     try:
                         logger.info("Triggering automated retraining...")
                         subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
-                        # Also could trigger rollback here if drift is severe
                     except Exception as e:
                         logger.error(f"Failed to trigger retraining: {str(e)}")
                     
@@ -215,12 +276,25 @@ class ModelManager:
             
             # Get prediction probabilities if available
             probabilities = []
+            confidence = None
             if hasattr(self.model, 'predict_proba'):
                 probabilities = self.model.predict_proba(X)[0].tolist()
                 confidence = float(np.max(probabilities))
                 PREDICTION_CONFIDENCE.observe(confidence)
             
             PREDICTION_COUNT.inc()
+            
+            # Record metrics in monitoring service
+            if self.monitoring_service:
+                try:
+                    latency_ms = 0  # Will be measured by middleware
+                    self.monitoring_service.record_prediction(
+                        success=True,
+                        latency_ms=latency_ms,
+                        confidence=confidence
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not record metrics: {str(e)}")
             
             # Add to buffer for drift detection
             self.request_buffer.append(features)
@@ -251,6 +325,21 @@ async def startup_event():
     success = model_manager.load_model()
     if not success:
         logger.error("Failed to load model on startup!")
+    
+    # Set baseline accuracy in monitoring service
+    if model_manager.monitoring_service and model_manager.metadata:
+        accuracy = model_manager.metadata.get('metrics', {}).get('accuracy')
+        if accuracy:
+            model_manager.monitoring_service.set_model_accuracy(accuracy, accuracy)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    if model_manager.monitoring_service:
+        try:
+            model_manager.monitoring_service.stop_monitoring()
+        except Exception as e:
+            logger.warning(f"Error stopping monitoring service: {str(e)}")
 
 # Middleware for request logging and metrics
 @app.middleware("http")
@@ -260,12 +349,23 @@ async def log_requests(request, call_next):
     response = await call_next(request)
     
     process_time = time.time() - start_time
+    process_time_ms = process_time * 1000
+    
     REQUEST_DURATION.observe(process_time)
     REQUEST_COUNT.labels(
         method=request.method,
         endpoint=request.url.path,
         status=response.status_code
     ).inc()
+    
+    # Record metrics in monitoring service
+    if model_manager.monitoring_service and request.url.path == "/predict":
+        try:
+            model_manager.monitoring_service._record_metric('latency_ms', process_time_ms)
+            if response.status_code >= 400:
+                model_manager.monitoring_service._record_metric('error_count', 1)
+        except Exception:
+            pass  # Don't fail request if metrics recording fails
     
     logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
@@ -379,6 +479,33 @@ async def get_model_features():
         "features": model_manager.feature_names,
         "count": len(model_manager.feature_names),
         "model_version": model_manager.metadata['version']
+    }
+
+@app.get("/monitoring/metrics")
+async def get_monitoring_metrics():
+    """Get current monitoring metrics"""
+    if not model_manager.monitoring_service:
+        raise HTTPException(status_code=503, detail="Monitoring service not available")
+    
+    return model_manager.monitoring_service.get_current_metrics()
+
+@app.get("/monitoring/summary")
+async def get_monitoring_summary():
+    """Get monitoring metrics summary for decision engine"""
+    if not model_manager.monitoring_service:
+        raise HTTPException(status_code=503, detail="Monitoring service not available")
+    
+    return model_manager.monitoring_service.get_metrics_summary()
+
+@app.get("/decision/history")
+async def get_decision_history(limit: int = 10):
+    """Get decision engine history"""
+    if not model_manager.decision_engine:
+        raise HTTPException(status_code=503, detail="Decision engine not available")
+    
+    return {
+        "history": model_manager.decision_engine.get_decision_history(limit=limit),
+        "total_decisions": len(model_manager.decision_engine.decision_history)
     }
 
 # Example usage endpoint

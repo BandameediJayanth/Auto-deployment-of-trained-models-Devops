@@ -58,8 +58,75 @@ class ReliabilityTracker:
         except Exception as e:
             logger.error(f"Failed to log event: {str(e)}")
 
+    def calculate_deployment_reliability(self):
+        """
+        Calculate deployment reliability using formal modeling from paper.
+        
+        From Section 6.8:
+        P_success = 1 - (P_test + P_deploy + P_runtime)
+        
+        where:
+        - P_test: failure probability during validation
+        - P_deploy: failure probability during deployment
+        - P_runtime: failure probability during runtime execution
+        """
+        try:
+            with open(self.events_file, 'r') as f:
+                events = json.load(f)
+            
+            if not events:
+                return {
+                    "p_success": 1.0,
+                    "p_test": 0.0,
+                    "p_deploy": 0.0,
+                    "p_runtime": 0.0,
+                    "deployment_count": 0,
+                    "test_failures": 0,
+                    "deploy_failures": 0,
+                    "runtime_failures": 0
+                }
+            
+            # Count events by type
+            deployments = [e for e in events if e['type'] == 'deployment']
+            test_failures = [e for e in events if 'test' in e.get('details', {}).get('stage', '').lower()]
+            deploy_failures = [e for e in events if 'deploy' in e.get('details', {}).get('stage', '').lower()]
+            runtime_failures = [e for e in events if e['type'] == 'failure' and 
+                               'runtime' in e.get('details', {}).get('stage', '').lower()]
+            
+            deployment_count = len(deployments)
+            
+            # Calculate failure probabilities
+            p_test = len(test_failures) / max(deployment_count, 1)
+            p_deploy = len(deploy_failures) / max(deployment_count, 1)
+            p_runtime = len(runtime_failures) / max(deployment_count, 1)
+            
+            # Calculate overall success probability
+            p_success = 1 - (p_test + p_deploy + p_runtime)
+            # Ensure it's between 0 and 1
+            p_success = max(0.0, min(1.0, p_success))
+            
+            return {
+                "p_success": p_success,
+                "p_test": p_test,
+                "p_deploy": p_deploy,
+                "p_runtime": p_runtime,
+                "deployment_count": deployment_count,
+                "test_failures": len(test_failures),
+                "deploy_failures": len(deploy_failures),
+                "runtime_failures": len(runtime_failures)
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate deployment reliability: {str(e)}")
+            return {}
+    
     def calculate_metrics(self):
-        """Calculate reliability metrics"""
+        """
+        Calculate reliability metrics including MTTR and failure rates.
+        
+        From Section 6.8:
+        MTTR = (1/N) * Σ t_recovery^(i)
+        """
         try:
             with open(self.events_file, 'r') as f:
                 events = json.load(f)
@@ -70,9 +137,8 @@ class ReliabilityTracker:
             failures = [e for e in events if e['type'] == 'failure']
             recoveries = [e for e in events if e['type'] == 'recovery_end']
             
-            # Calculate MTTR
+            # Calculate MTTR (Mean Time to Recovery)
             # We assume every recovery corresponds to the last failure
-            # This is a simplification
             recovery_times = []
             
             sorted_events = sorted(events, key=lambda x: x['timestamp'])
@@ -86,6 +152,7 @@ class ReliabilityTracker:
                     recovery_times.append(recovery_time)
                     last_failure_time = None # Reset
             
+            # MTTR calculation: MTTR = (1/N) * Σ t_recovery^(i)
             mttr = sum(recovery_times) / len(recovery_times) if recovery_times else 0
             
             # Calculate Failure Rate (failures per hour)
@@ -96,13 +163,23 @@ class ReliabilityTracker:
             total_hours = total_time_seconds / 3600
             failure_rate = len(failures) / total_hours if total_hours > 0 else 0
             
-            return {
+            # Calculate deployment reliability
+            reliability_metrics = self.calculate_deployment_reliability()
+            
+            # Combine all metrics
+            metrics = {
                 "mttr_seconds": mttr,
+                "mttr_minutes": mttr / 60,
+                "mttr_hours": mttr / 3600,
                 "failure_count": len(failures),
                 "recovery_count": len(recoveries),
                 "failure_rate_per_hour": failure_rate,
-                "total_tracked_time_seconds": total_time_seconds
+                "total_tracked_time_seconds": total_time_seconds,
+                "total_tracked_time_hours": total_time_seconds / 3600,
+                "deployment_reliability": reliability_metrics
             }
+            
+            return metrics
             
         except Exception as e:
             logger.error(f"Failed to calculate metrics: {str(e)}")
