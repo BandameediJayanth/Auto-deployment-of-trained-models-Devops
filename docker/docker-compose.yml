@@ -18,7 +18,7 @@ services:
       - ../logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -92,10 +92,36 @@ services:
     depends_on:
       - ml-api
 
+  # Autonomous Drift Monitoring Service
+  # Runs continuously, checking for drift and triggering retraining
+  # Lifecycle: Starts with docker-compose up, stops with docker-compose down
+  drift-monitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ml-drift-monitor
+    command: python src/monitoring_service.py
+    environment:
+      - ENABLE_AUTOMATION=true # Set to false to disable
+      - DRIFT_CHECK_INTERVAL=3600 # Check every hour (3600 seconds)
+      - DRIFT_THRESHOLD=0.2 # Drift threshold for retraining
+      - REFERENCE_DATA_PATH=data/dataset.csv
+    volumes:
+      - ../models:/app/models # Read/write access to models
+      - ../data:/app/data:ro # Read-only access to data
+      - ../logs:/app/logs # Write access to logs
+    restart: unless-stopped
+    networks:
+      - ml-network
+    depends_on:
+      - ml-api
+      - prometheus
+
 volumes:
   prometheus_data:
   grafana_data:
   redis_data:
+
 
 networks:
   ml-network:
