@@ -66,7 +66,7 @@ class ModelValidator:
             logger.error(f"Error loading model: {str(e)}")
             return False
     
-    def load_test_data(self, data_path='data/dataset.csv'):
+    def load_test_data(self, data_path='data/breast_cancer_dataset.csv'):
         """Load test data for validation"""
         try:
             logger.info(f"Loading test data from {data_path}")
@@ -98,7 +98,7 @@ class ModelValidator:
         all_passed = all(validations.values())
         
         for check, passed in validations.items():
-            status = "✅ PASS" if passed else "❌ FAIL"
+            status = "[PASS]" if passed else "[FAIL]"
             logger.info(f"  {check}: {status}")
         
         return all_passed
@@ -127,7 +127,7 @@ class ModelValidator:
                     threshold = self.thresholds[threshold_key]
                     validations[f'{metric}_threshold'] = value >= threshold
                     
-                    status = "✅ PASS" if value >= threshold else "❌ FAIL"
+                    status = "[PASS]" if value >= threshold else "[FAIL]"
                     logger.info(f"  {metric}: {value:.4f} (threshold: {threshold:.2f}) {status}")
             
             return validations, metrics
@@ -152,8 +152,8 @@ class ModelValidator:
                 'cv_std_threshold': cv_std <= self.thresholds['max_cv_std']
             }
             
-            status_mean = "✅ PASS" if validations['cv_mean_threshold'] else "❌ FAIL"
-            status_std = "✅ PASS" if validations['cv_std_threshold'] else "❌ FAIL"
+            status_mean = "[PASS]" if validations['cv_mean_threshold'] else "[FAIL]"
+            status_std = "[PASS]" if validations['cv_std_threshold'] else "[FAIL]"
             
             logger.info(f"  CV Mean: {cv_mean:.4f} (threshold: {self.thresholds['min_cv_mean']:.2f}) {status_mean}")
             logger.info(f"  CV Std: {cv_std:.4f} (threshold: {self.thresholds['max_cv_std']:.2f}) {status_std}")
@@ -189,7 +189,7 @@ class ModelValidator:
                 validations['proba_sums_to_one'] = np.allclose(prediction_proba.sum(axis=1), 1.0)
             
             all_passed = all(validations.values())
-            status = "✅ PASS" if all_passed else "❌ FAIL"
+            status = "[PASS]" if all_passed else "[FAIL]"
             logger.info(f"  Prediction capability: {status}")
             
             return validations
@@ -272,11 +272,11 @@ class ModelValidator:
             overall_pass = all(all_validations.values())
             all_validations['overall_pass'] = overall_pass
             
-            # Store results
+            # Store results - convert NumPy types to Python types for JSON serialization
             self.validation_results = {
-                'validations': all_validations,
-                'performance_metrics': perf_metrics,
-                'cross_validation_metrics': cv_metrics
+                'validations': {k: bool(v) if isinstance(v, (np.bool_, np.generic)) else v for k, v in all_validations.items()},
+                'performance_metrics': {k: float(v) if isinstance(v, (np.floating, np.integer)) else v for k, v in perf_metrics.items()},
+                'cross_validation_metrics': {k: (float(v) if isinstance(v, (np.floating, np.integer)) else (v.tolist() if isinstance(v, np.ndarray) else v)) for k, v in cv_metrics.items()}
             }
             
             # Generate report
@@ -288,14 +288,14 @@ class ModelValidator:
             logger.info("=" * 60)
             
             if overall_pass:
-                logger.info("🎉 MODEL VALIDATION PASSED - READY FOR DEPLOYMENT!")
-                logger.info(f"📊 Validation report: {report_path}")
-                logger.info("\n📋 Next steps:")
+                logger.info("[SUCCESS] MODEL VALIDATION PASSED - READY FOR DEPLOYMENT!")
+                logger.info(f"Validation report: {report_path}")
+                logger.info("\nNext steps:")
                 logger.info("   1. Start API server: python src/model_api.py")
                 logger.info("   2. Build Docker container: docker build -f docker/Dockerfile .")
                 logger.info("   3. Deploy to production environment")
             else:
-                logger.error("❌ MODEL VALIDATION FAILED - NOT READY FOR DEPLOYMENT")
+                logger.error("[FAILED] MODEL VALIDATION FAILED - NOT READY FOR DEPLOYMENT")
                 logger.error("Check the validation report for details on failed checks")
             
             return overall_pass
@@ -310,7 +310,7 @@ def main():
     
     # Check if model exists
     if not os.path.exists('models/latest_model.json'):
-        print("❌ No trained model found!")
+        print("[ERROR] No trained model found!")
         print("Please run model training first: python src/train_model.py")
         exit(1)
     

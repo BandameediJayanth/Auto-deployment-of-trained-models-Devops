@@ -1,8 +1,9 @@
 """
-ML Model Training Script
+ML Model Training Script - Breast Cancer Model
 Auto-Deployment ML Models Project
 
 This script trains a machine learning model and saves it for deployment.
+Now supports model selection via command line arguments.
 """
 
 import os
@@ -13,9 +14,10 @@ import numpy as np
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import make_classification
+from sklearn.datasets import load_breast_cancer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import logging
+import argparse
 
 # Configure logging
 logging.basicConfig(
@@ -35,55 +37,26 @@ class ModelTrainer:
         self.model = None
         self.metrics = {}
         
-    def generate_sample_data(self, n_samples=1000, n_features=20):
-        """Generate sample dataset for demonstration"""
-        logger.info(f"Generating sample dataset with {n_samples} samples and {n_features} features")
+    def load_breast_cancer_data(self):
+        """Load the breast cancer dataset"""
+        logger.info("Loading breast cancer dataset...")
+        data = load_breast_cancer()
         
-        X, y = make_classification(
-            n_samples=n_samples,
-            n_features=n_features,
-            n_informative=15,
-            n_redundant=5,
-            n_classes=2,
-            random_state=42
-        )
+        X = data.data
+        y = data.target
+        feature_names = data.feature_names.tolist()
         
-        # Create feature names
-        feature_names = [f"feature_{i}" for i in range(n_features)]
-        
-        # Convert to DataFrame
+        # Create DataFrame for better handling
         df = pd.DataFrame(X, columns=feature_names)
         df['target'] = y
         
         # Save dataset
         os.makedirs('data', exist_ok=True)
-        df.to_csv('data/dataset.csv', index=False)
-        logger.info("Dataset saved to data/dataset.csv")
+        df.to_csv('data/breast_cancer_dataset.csv', index=False)
+        logger.info(f"Breast cancer dataset saved to data/breast_cancer_dataset.csv")
+        logger.info(f"Dataset shape: {X.shape[0]} samples, {X.shape[1]} features")
         
         return X, y, feature_names
-    
-    def load_data(self, data_path='data/dataset.csv'):
-        """Load data from CSV file"""
-        try:
-            if not os.path.exists(data_path):
-                logger.warning(f"Data file {data_path} not found. Generating sample data...")
-                return self.generate_sample_data()
-            
-            logger.info(f"Loading data from {data_path}")
-            df = pd.read_csv(data_path)
-            
-            # Separate features and target
-            X = df.drop('target', axis=1)
-            y = df['target']
-            feature_names = X.columns.tolist()
-            
-            logger.info(f"Data loaded: {X.shape[0]} samples, {X.shape[1]} features")
-            return X.values, y.values, feature_names
-            
-        except Exception as e:
-            logger.error(f"Error loading data: {str(e)}")
-            logger.info("Generating sample data instead...")
-            return self.generate_sample_data()
     
     def train_model(self, X, y):
         """Train the machine learning model"""
@@ -142,7 +115,15 @@ class ModelTrainer:
             'feature_names': feature_names,
             'metrics': self.metrics,
             'model_type': 'RandomForestClassifier',
-            'sklearn_version': joblib.__version__
+            'sklearn_version': joblib.__version__,
+            'dataset_info': {
+                'name': 'Breast Cancer Wisconsin',
+                'source': 'scikit-learn',
+                'n_samples': 569,
+                'n_features': 30,
+                'n_classes': 2,
+                'class_names': ['malignant', 'benign']
+            }
         }
         
         metadata_path = f'models/{self.model_name}_v{self.version}_metadata.json'
@@ -191,8 +172,8 @@ class ModelTrainer:
             logger.info("STARTING ML MODEL TRAINING PIPELINE")
             logger.info("=" * 50)
             
-            # Load data
-            X, y, feature_names = self.load_data()
+            # Load breast cancer data
+            X, y, feature_names = self.load_breast_cancer_data()
             
             # Train model
             model, metrics = self.train_model(X, y)
@@ -215,17 +196,22 @@ class ModelTrainer:
             logger.error(f"Training pipeline failed: {str(e)}")
             return False
 
-import argparse
-
 def main():
     """Main function to run model training"""
     parser = argparse.ArgumentParser(description='Train ML Model')
     parser.add_argument('--version', type=str, default="1.0.0", help='Model version')
-    parser.add_argument('--name', type=str, default="ml_classifier", help='Model name')
+    parser.add_argument('--name', type=str, default="breast_cancer_model", help='Model name')
+    parser.add_argument('--model-type', type=str, default="breast_cancer", help='Model type (breast_cancer)')
     args = parser.parse_args()
     
     MODEL_NAME = args.name
     VERSION = args.version
+    MODEL_TYPE = args.model_type
+    
+    # Validate model type
+    if MODEL_TYPE != "breast_cancer":
+        logger.error(f"Unsupported model type: {MODEL_TYPE}. Only 'breast_cancer' is supported.")
+        exit(1)
     
     # Create trainer instance
     trainer = ModelTrainer(model_name=MODEL_NAME, version=VERSION)

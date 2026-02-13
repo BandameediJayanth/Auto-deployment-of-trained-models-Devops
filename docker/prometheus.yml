@@ -38,7 +38,3 @@ alerting:
     - static_configs:
         - targets:
           # - alertmanager:9093
-
-# Add alert rules for ML model monitoring
-rule_files:
-  - "alert_rules.yml"

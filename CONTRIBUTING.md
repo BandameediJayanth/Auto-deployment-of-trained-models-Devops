@@ -1,185 +1,114 @@
-# Contributing to Auto-Deployment ML Models
+# Contributing to ML API Deployment
 
-Thank you for your interest in contributing to this MLOps project! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing! This document provides guidelines for contributing to this project.
 
-## 🎯 Code of Conduct
+## 🤝 How to Contribute
 
-By participating in this project, you agree to maintain a respectful and inclusive environment for all contributors.
+### Reporting Bugs
+- Use the GitHub issue tracker
+- Describe the bug in detail
+- Include steps to reproduce
+- Provide system information (OS, Python version, Docker version)
 
-## 🚀 Getting Started
+### Suggesting Features
+- Open an issue with the "enhancement" label
+- Clearly describe the feature and its benefits
+- Provide use cases and examples
 
-### Prerequisites
-- Python 3.8 or higher
-- Git
-- Docker (optional, for containerization)
-- Basic understanding of ML and DevOps concepts
-
-### Setting Up Your Development Environment
+### Pull Requests
 
 1. **Fork the repository**
-   ```bash
-   # Click the "Fork" button on GitHub
-   ```
-
-2. **Clone your fork**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/Aegis_Code_AI.git
-   cd Aegis_Code_AI
-   ```
-
-3. **Set up the development environment**
-   ```bash
-   # Windows
-   .\ci-cd\setup.ps1
-
-   # Linux/Mac
-   chmod +x ci-cd/setup.sh
-   ./ci-cd/setup.sh
-   ```
-
-4. **Create a branch for your feature**
+2. **Create a feature branch**
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
-## 📝 How to Contribute
+3. **Make your changes**
+   - Write clean, readable code
+   - Follow existing code style
+   - Add comments where necessary
+   - Update documentation
 
-### Reporting Bugs
-
-If you find a bug, please create an issue with:
-- **Clear title** describing the issue
-- **Steps to reproduce** the problem
-- **Expected behavior** vs actual behavior
-- **Environment details** (OS, Python version, etc.)
-- **Logs or screenshots** if applicable
-
-### Suggesting Enhancements
-
-Enhancement suggestions are welcome! Please include:
-- **Clear description** of the enhancement
-- **Use case** explaining why it would be valuable
-- **Proposed implementation** (if you have ideas)
-
-### Pull Requests
-
-1. **Ensure your code follows the project style**
-   - Use meaningful variable names
-   - Add docstrings to functions
-   - Follow PEP 8 for Python code
-
-2. **Write or update tests**
+4. **Test your changes**
    ```bash
-   pytest tests/
+   python src/validate_model.py
+   docker-compose -f docker/docker-compose.yml up -d
    ```
 
-3. **Update documentation** if needed
-   - Update README.md for new features
-   - Add docstrings to new functions/classes
-   - Update relevant docs in `/docs`
-
-4. **Commit your changes**
+5. **Commit your changes**
    ```bash
-   git add .
-   git commit -m "feat: add amazing new feature"
+   git commit -m "feat: add amazing feature"
    ```
+   
+   Use conventional commits:
+   - `feat:` new feature
+   - `fix:` bug fix
+   - `docs:` documentation changes
+   - `style:` code style changes
+   - `refactor:` code refactoring
+   - `test:` test additions/changes
+   - `chore:` maintenance tasks
 
-   Use conventional commit messages:
-   - `feat:` for new features
-   - `fix:` for bug fixes
-   - `docs:` for documentation changes
-   - `test:` for test additions/changes
-   - `refactor:` for code refactoring
-   - `chore:` for maintenance tasks
-
-5. **Push to your fork**
+6. **Push to your fork**
    ```bash
    git push origin feature/your-feature-name
    ```
 
-6. **Open a Pull Request**
-   - Go to the original repository
-   - Click "New Pull Request"
-   - Select your branch
-   - Fill in the PR template with details
+7. **Open a Pull Request**
+   - Provide a clear description
+   - Reference related issues
+   - Include screenshots if applicable
 
-## 🧪 Testing Guidelines
+## 📝 Code Style
 
-- Write tests for new features
-- Ensure all existing tests pass
-- Aim for at least 80% code coverage
-- Test both success and failure scenarios
-
-```bash
-# Run tests
-pytest tests/
-
-# Run tests with coverage
-pytest tests/ --cov=src --cov-report=html
-```
-
-## 📋 Code Review Process
-
-1. Maintainers will review your PR
-2. Address any requested changes
-3. Once approved, your PR will be merged
-4. Your contribution will be credited in releases
-
-## 🎨 Coding Standards
-
-### Python Code Style
-- Follow PEP 8
+### Python
+- Follow PEP 8 guidelines
 - Use type hints where appropriate
-- Maximum line length: 100 characters
-- Use meaningful variable/function names
+- Write docstrings for functions and classes
+- Keep functions focused and small
+
+### Docker
+- Use multi-stage builds
+- Minimize layer count
+- Don't run as root
+- Include health checks
 
 ### Documentation
-- Add docstrings to all public functions/classes
-- Include parameter descriptions and return types
-- Update README.md for significant changes
+- Update README.md for major changes
+- Add inline comments for complex logic
+- Update API documentation
+- Keep CHANGELOG.md current
 
-### Example Function Documentation
-```python
-def train_model(data: pd.DataFrame, params: dict) -> Model:
-    """
-    Train a machine learning model with given data and parameters.
-    
-    Args:
-        data (pd.DataFrame): Training dataset
-        params (dict): Model hyperparameters
-        
-    Returns:
-        Model: Trained model instance
-        
-    Raises:
-        ValueError: If data is empty or invalid
-    """
-    pass
-```
+## 🧪 Testing
 
-## 🏗️ Project Structure
+- Ensure all existing tests pass
+- Add tests for new features
+- Test Docker builds locally
+- Verify API endpoints work correctly
 
-```
-Devops_Project/
-├── src/              # Source code
-├── tests/            # Test files
-├── models/           # Trained models (gitignored)
-├── data/             # Data files (gitignored)
-├── docker/           # Docker configurations
-├── ci-cd/            # CI/CD scripts
-├── docs/             # Documentation
-└── config/           # Configuration files
-```
+## 📋 Checklist
 
-## 🤔 Questions?
+Before submitting a PR, ensure:
+- [ ] Code follows project style guidelines
+- [ ] All tests pass
+- [ ] Documentation is updated
+- [ ] Commit messages are clear
+- [ ] No sensitive data is committed
+- [ ] Docker builds successfully
+- [ ] API endpoints are tested
 
-- Open an issue for questions
-- Check existing issues/PRs first
-- Contact project maintainers
+## 🎯 Priority Areas
 
-## 📜 License
+We especially welcome contributions in:
+- Additional ML models
+- Performance optimizations
+- Security enhancements
+- Documentation improvements
+- Test coverage
+- UI/UX improvements
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+## 📧 Questions?
 
-## 🙏 Thank You!
+Feel free to open an issue for any questions or reach out to the maintainers.
 
-Your contributions make this project better for everyone. Thank you for taking the time to contribute!
+Thank you for contributing! 🙏

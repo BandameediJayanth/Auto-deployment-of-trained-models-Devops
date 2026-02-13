@@ -44,6 +44,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY src/ ./src/
 COPY models/ ./models/
+COPY static/ ./static/
 
 # Create directories for logs and ensure proper permissions
 RUN mkdir -p logs data && \

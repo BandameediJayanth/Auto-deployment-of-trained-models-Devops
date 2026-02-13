@@ -1,8 +1,9 @@
 """
-Model API Server
+Model API Server - Enhanced with Model Selection
 Auto-Deployment ML Models Project
 
 FastAPI server for serving trained ML models with monitoring and logging.
+Now supports model selection and loading.
 """
 
 import os
@@ -11,44 +12,23 @@ import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pathlib import Path
 import logging
 import time
 import traceback
-import subprocess
-import sys
+import argparse
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ConfigDict
 import uvicorn
 
 # Prometheus monitoring
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
-
-# Import Drift Detector, Reliability Tracker, Decision Engine, and Monitoring Service
-try:
-    from src.drift_detection import DriftDetector
-    from src.reliability import ReliabilityTracker
-    from src.decision_engine import PolicyEngine, DeploymentAction
-    from src.monitoring_service import MonitoringService, get_monitoring_service
-except ImportError:
-    # Fallback for when running from different directory structure
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from src.drift_detection import DriftDetector
-    from src.reliability import ReliabilityTracker
-    try:
-        from src.decision_engine import PolicyEngine, DeploymentAction
-        from src.monitoring_service import MonitoringService, get_monitoring_service
-    except ImportError:
-        PolicyEngine = None
-        DeploymentAction = None
-        MonitoringService = None
-        get_monitoring_service = None
-
 
 # Configure logging
 logging.basicConfig(
@@ -71,32 +51,40 @@ DRIFT_SCORE = Gauge('model_drift_score', 'Fraction of features with detected dri
 PREDICTION_CONFIDENCE = Histogram('model_prediction_confidence', 'Prediction confidence score')
 DRIFTED_FEATURES_COUNT = Gauge('model_drifted_features_count', 'Number of drifted features')
 
-
 # Pydantic models for API
 class PredictionRequest(BaseModel):
     features: List[float] = Field(..., description="Input features for prediction")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "features": [1.2, 3.4, 5.6, 7.8, 2.1, 4.3, 6.5, 8.7, 1.9, 3.2]
             }
         }
+    )
 
 class PredictionResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     prediction: int = Field(..., description="Model prediction (class)")
     probability: List[float] = Field(..., description="Prediction probabilities for each class")
     model_version: str = Field(..., description="Version of the model used")
+    model_name: str = Field(..., description="Name of the model used")
     timestamp: str = Field(..., description="Prediction timestamp")
 
 class HealthResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     status: str
     model_loaded: bool
     model_version: str
+    model_name: str
     uptime_seconds: float
     timestamp: str
 
 class ModelInfo(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     name: str
     version: str
     type: str
@@ -116,132 +104,142 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global model and metadata
-model = None
-metadata = None
+# Global model manager
+model_manager = None
 start_time = time.time()
 
 class ModelManager:
-    def __init__(self):
+    def __init__(self, model_path: Optional[str] = None):
         self.model = None
         self.metadata = None
         self.feature_names = None
         self.is_loaded = False
-        self.drift_detector = DriftDetector()
-        self.reliability_tracker = ReliabilityTracker()
+        self.model_path = model_path
         self.request_buffer = []
-        self.buffer_size = 50 # Run drift detection every 50 requests
+        self.buffer_size = 50
         
-        # Initialize decision engine and monitoring service if available
-        self.decision_engine = PolicyEngine() if PolicyEngine else None
-        self.monitoring_service = get_monitoring_service() if get_monitoring_service else None
+    def find_model_files(self, models_dir: str = 'models') -> List[Dict[str, Any]]:
+        """Find all available model files"""
+        model_files = []
         
-        # Start monitoring service if available
-        if self.monitoring_service:
-            try:
-                self.monitoring_service.start_monitoring()
-            except Exception as e:
-                logger.warning(f"Could not start monitoring service: {str(e)}")
-    
-    def check_drift_background(self, data_batch):
-        """Run drift detection on a batch of data and use decision engine"""
-        try:
-            if not self.feature_names:
-                return
+        if not os.path.exists(models_dir):
+            return model_files
+        
+        # Look for .pkl files
+        for file in os.listdir(models_dir):
+            if file.endswith('.pkl') and not file.startswith('.'):
+                model_path = os.path.join(models_dir, file)
+                metadata_path = model_path.replace('.pkl', '_metadata.json')
                 
-            logger.info(f"Running drift detection on batch of {len(data_batch)} samples")
-            result = self.drift_detector.check_drift(pd.DataFrame(data_batch, columns=self.feature_names))
-            
-            if "error" not in result:
-                drift_score = result["drifted_feature_count"] / result["total_features"] if result["total_features"] > 0 else 0
-                DRIFT_SCORE.set(drift_score)
-                DRIFTED_FEATURES_COUNT.set(result["drifted_feature_count"])
-                
-                # Use decision engine if available
-                if self.decision_engine and self.monitoring_service:
-                    # Get current metrics
-                    metrics = self.monitoring_service.get_metrics_summary()
-                    
-                    # Make decision based on drift and metrics
-                    decision = self.decision_engine.decide_action(
-                        metrics=metrics,
-                        drift_results=result
-                    )
-                    
-                    logger.info(f"Decision engine action: {decision['action']}")
-                    logger.debug(f"Reasoning: {decision['reasoning']}")
-                    
-                    # Execute action
-                    if decision['action'] == DeploymentAction.RETRAIN.value:
-                        try:
-                            logger.info("Decision engine: Triggering automated retraining...")
-                            subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
-                        except Exception as e:
-                            logger.error(f"Failed to trigger retraining: {str(e)}")
-                    
-                    elif decision['action'] == DeploymentAction.ROLLBACK.value:
-                        try:
-                            logger.warning("Decision engine: Triggering rollback...")
-                            subprocess.Popen([sys.executable, "src/rollback.py"])
-                        except Exception as e:
-                            logger.error(f"Failed to trigger rollback: {str(e)}")
-                    
-                    elif result["drift_detected"]:
-                        # Fallback to old behavior if decision engine not available
-                        logger.warning(f"Drift detected! Score: {drift_score:.2f}")
-                        self.reliability_tracker.log_event("failure", {"reason": "drift_detected", "score": drift_score})
-                        
-                        # Trigger retraining
-                        try:
-                            logger.info("Triggering automated retraining...")
-                            subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
-                        except Exception as e:
-                            logger.error(f"Failed to trigger retraining: {str(e)}")
-                elif result["drift_detected"]:
-                    # Fallback to old behavior if decision engine not available
-                    logger.warning(f"Drift detected! Score: {drift_score:.2f}")
-                    self.reliability_tracker.log_event("failure", {"reason": "drift_detected", "score": drift_score})
-                    
-                    # Trigger retraining
+                # Check if metadata exists
+                if os.path.exists(metadata_path):
                     try:
-                        logger.info("Triggering automated retraining...")
-                        subprocess.Popen([sys.executable, "src/trigger_retraining.py"])
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            
+                        model_files.append({
+                            'path': model_path,
+                            'metadata_path': metadata_path,
+                            'name': metadata.get('model_name', file.replace('.pkl', '')),
+                            'version': metadata.get('version', 'unknown'),
+                            'accuracy': metadata.get('metrics', {}).get('accuracy', 0),
+                            'features': len(metadata.get('feature_names', [])),
+                            'metadata': metadata
+                        })
                     except Exception as e:
-                        logger.error(f"Failed to trigger retraining: {str(e)}")
-                    
-        except Exception as e:
-            logger.error(f"Error in drift detection: {str(e)}")
-
-    def load_model(self):
-        """Load the latest trained model"""
+                        logger.warning(f"Could not read metadata for {model_path}: {e}")
+        
+        return model_files
+    
+    def select_model_interactive(self) -> Optional[str]:
+        """Interactive model selection"""
+        models = self.find_model_files()
+        
+        if not models:
+            logger.error("No models found in models directory!")
+            return None
+        
+        print("\n" + "=" * 80)
+        print("AVAILABLE MODELS")
+        print("=" * 80)
+        print(f"{'#':<5} {'Model Name':<30} {'Version':<15} {'Accuracy':<12} {'Features':<10}")
+        print("-" * 80)
+        
+        for idx, model in enumerate(models, 1):
+            print(f"{idx:<5} {model['name'][:28]:<30} {model['version']:<15} "
+                  f"{model['accuracy']:<12.4f} {model['features']:<10}")
+        
+        print("=" * 80)
+        
+        # Check if running in non-interactive mode (Docker, CI/CD, etc.)
+        import sys
+        if not sys.stdin.isatty():
+            # Auto-select first model in non-interactive mode
+            selected = models[0]
+            print(f"\nAuto-selecting first model (non-interactive mode): {selected['name']} (v{selected['version']})")
+            logger.info(f"Auto-selected model: {selected['name']} (v{selected['version']})")
+            return selected['path']
+        
+        while True:
+            try:
+                choice = input(f"\nSelect a model (1-{len(models)}) or 'q' to quit: ").strip()
+                
+                if choice.lower() == 'q':
+                    return None
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(models):
+                    selected = models[choice_num - 1]
+                    print(f"\nSelected: {selected['name']} (v{selected['version']})")
+                    return selected['path']
+                else:
+                    print(f"Please enter a number between 1 and {len(models)}")
+            except ValueError:
+                print("Please enter a valid number or 'q' to quit")
+            except KeyboardInterrupt:
+                print("\n\nCancelled by user")
+                return None
+            except EOFError:
+                # Handle EOF error in non-interactive environments
+                selected = models[0]
+                print(f"\nAuto-selecting first model (EOF detected): {selected['name']} (v{selected['version']})")
+                logger.info(f"Auto-selected model due to EOF: {selected['name']} (v{selected['version']})")
+                return selected['path']
+    
+    def load_model(self, model_path: Optional[str] = None):
+        """Load a specific model or prompt for selection"""
+        if model_path is None:
+            model_path = self.model_path
+        
+        if model_path is None:
+            # Interactive selection
+            model_path = self.select_model_interactive()
+            if model_path is None:
+                return False
+        
         try:
             start_load_time = time.time()
             
-            # Load latest model info
-            if not os.path.exists('models/latest_model.json'):
-                raise FileNotFoundError("No trained model found. Please train a model first.")
-            
-            with open('models/latest_model.json', 'r') as f:
-                latest_info = json.load(f)
-            
-            model_path = latest_info['latest_model']
-            metadata_path = latest_info['latest_metadata']
-            
+            # Load model
             logger.info(f"Loading model from {model_path}")
             self.model = joblib.load(model_path)
             
+            # Load metadata
+            metadata_path = model_path.replace('.pkl', '_metadata.json')
             logger.info(f"Loading metadata from {metadata_path}")
+            
             with open(metadata_path, 'r') as f:
                 self.metadata = json.load(f)
             
             self.feature_names = self.metadata['feature_names']
             self.is_loaded = True
+            self.model_path = model_path
             
             load_time = time.time() - start_load_time
             MODEL_LOAD_TIME.set(load_time)
@@ -257,7 +255,7 @@ class ModelManager:
             self.is_loaded = False
             return False
     
-    def predict(self, features: List[float], background_tasks: BackgroundTasks = None) -> Dict[str, Any]:
+    def predict(self, features: List[float]) -> Dict[str, Any]:
         """Make prediction using the loaded model"""
         if not self.is_loaded:
             raise HTTPException(status_code=503, detail="Model not loaded")
@@ -284,29 +282,11 @@ class ModelManager:
             
             PREDICTION_COUNT.inc()
             
-            # Record metrics in monitoring service
-            if self.monitoring_service:
-                try:
-                    latency_ms = 0  # Will be measured by middleware
-                    self.monitoring_service.record_prediction(
-                        success=True,
-                        latency_ms=latency_ms,
-                        confidence=confidence
-                    )
-                except Exception as e:
-                    logger.debug(f"Could not record metrics: {str(e)}")
-            
-            # Add to buffer for drift detection
-            self.request_buffer.append(features)
-            if background_tasks and len(self.request_buffer) >= self.buffer_size:
-                batch = self.request_buffer.copy()
-                self.request_buffer = [] # Reset buffer
-                background_tasks.add_task(self.check_drift_background, batch)
-            
             return {
                 'prediction': int(prediction),
                 'probability': probabilities,
                 'model_version': self.metadata['version'],
+                'model_name': self.metadata['model_name'],
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -325,21 +305,6 @@ async def startup_event():
     success = model_manager.load_model()
     if not success:
         logger.error("Failed to load model on startup!")
-    
-    # Set baseline accuracy in monitoring service
-    if model_manager.monitoring_service and model_manager.metadata:
-        accuracy = model_manager.metadata.get('metrics', {}).get('accuracy')
-        if accuracy:
-            model_manager.monitoring_service.set_model_accuracy(accuracy, accuracy)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    if model_manager.monitoring_service:
-        try:
-            model_manager.monitoring_service.stop_monitoring()
-        except Exception as e:
-            logger.warning(f"Error stopping monitoring service: {str(e)}")
 
 # Middleware for request logging and metrics
 @app.middleware("http")
@@ -349,23 +314,14 @@ async def log_requests(request, call_next):
     response = await call_next(request)
     
     process_time = time.time() - start_time
-    process_time_ms = process_time * 1000
     
-    REQUEST_DURATION.observe(process_time)
     REQUEST_COUNT.labels(
         method=request.method,
         endpoint=request.url.path,
         status=response.status_code
     ).inc()
     
-    # Record metrics in monitoring service
-    if model_manager.monitoring_service and request.url.path == "/predict":
-        try:
-            model_manager.monitoring_service._record_metric('latency_ms', process_time_ms)
-            if response.status_code >= 400:
-                model_manager.monitoring_service._record_metric('error_count', 1)
-        except Exception:
-            pass  # Don't fail request if metrics recording fails
+    REQUEST_DURATION.observe(process_time)
     
     logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
@@ -373,42 +329,24 @@ async def log_requests(request, call_next):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint with API information"""
-    html_content = f"""
-    <html>
-        <head>
-            <title>ML Model API</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ color: #2E86AB; }}
-                .info {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
-                .endpoints {{ margin-top: 20px; }}
-                .endpoint {{ margin: 10px 0; padding: 10px; background-color: #e8f4f8; border-radius: 3px; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="header">🚀 ML Model API</h1>
-            <div class="info">
-                <h2>Auto-Deployment ML Models - Production API</h2>
-                <p><strong>Status:</strong> {'🟢 Running' if model_manager.is_loaded else '🔴 Model Not Loaded'}</p>
-                <p><strong>Model:</strong> {model_manager.metadata['model_name'] if model_manager.is_loaded else 'None'}</p>
-                <p><strong>Version:</strong> {model_manager.metadata['version'] if model_manager.is_loaded else 'N/A'}</p>
-                <p><strong>Uptime:</strong> {time.time() - start_time:.1f} seconds</p>
-            </div>
-            
-            <div class="endpoints">
-                <h3>🔗 Available Endpoints:</h3>
-                <div class="endpoint"><strong>GET /health</strong> - Health check</div>
-                <div class="endpoint"><strong>POST /predict</strong> - Make predictions</div>
-                <div class="endpoint"><strong>GET /model/info</strong> - Model information</div>
-                <div class="endpoint"><strong>GET /metrics</strong> - Prometheus metrics</div>
-                <div class="endpoint"><strong>GET /docs</strong> - API documentation (Swagger UI)</div>
-                <div class="endpoint"><strong>GET /redoc</strong> - API documentation (ReDoc)</div>
-            </div>
-        </body>
-    </html>
-    """
-    return html_content
+    """Serve the web UI"""
+    static_dir = Path(__file__).parent.parent / "static"
+    index_file = static_dir / "index.html"
+    
+    if index_file.exists():
+        return FileResponse(index_file)
+    else:
+        # Fallback if static file doesn't exist
+        return HTMLResponse(content="""
+        <html>
+            <head><title>ML Model API</title></head>
+            <body style="font-family: Arial; padding: 50px; text-align: center;">
+                <h1>🏥 ML Model API</h1>
+                <p>Web UI not found. Please check the static directory.</p>
+                <p><a href="/docs">View API Documentation</a></p>
+            </body>
+        </html>
+        """)
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -419,15 +357,16 @@ async def health_check():
         status="healthy" if model_manager.is_loaded else "unhealthy",
         model_loaded=model_manager.is_loaded,
         model_version=model_manager.metadata['version'] if model_manager.is_loaded else "none",
+        model_name=model_manager.metadata['model_name'] if model_manager.is_loaded else "none",
         uptime_seconds=uptime,
         timestamp=datetime.now().isoformat()
     )
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
+async def predict(request: PredictionRequest):
     """Make a prediction using the loaded model"""
     try:
-        result = model_manager.predict(request.features, background_tasks)
+        result = model_manager.predict(request.features)
         return PredictionResponse(**result)
     
     except Exception as e:
@@ -453,105 +392,61 @@ async def get_model_info():
         accuracy=metadata['metrics']['accuracy']
     )
 
-@app.post("/model/reload")
-async def reload_model():
-    """Reload the model (useful for model updates)"""
-    logger.info("Reloading model...")
-    success = model_manager.load_model()
+@app.get("/models")
+async def list_models():
+    """List all available models"""
+    models = model_manager.find_model_files()
+    return {
+        "models": models,
+        "count": len(models),
+        "loaded_model": model_manager.model_path if model_manager.is_loaded else None
+    }
+
+@app.post("/model/load")
+async def load_model_endpoint(model_path: Optional[str] = None):
+    """Load a specific model"""
+    success = model_manager.load_model(model_path)
     
     if success:
-        return {"status": "success", "message": "Model reloaded successfully"}
+        return {"status": "success", "message": "Model loaded successfully"}
     else:
-        raise HTTPException(status_code=500, detail="Failed to reload model")
+        raise HTTPException(status_code=500, detail="Failed to load model")
 
 @app.get("/metrics")
 async def get_metrics():
     """Prometheus metrics endpoint"""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-@app.get("/model/features")
-async def get_model_features():
-    """Get the list of expected features"""
-    if not model_manager.is_loaded:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    return {
-        "features": model_manager.feature_names,
-        "count": len(model_manager.feature_names),
-        "model_version": model_manager.metadata['version']
-    }
-
-@app.get("/monitoring/metrics")
-async def get_monitoring_metrics():
-    """Get current monitoring metrics"""
-    if not model_manager.monitoring_service:
-        raise HTTPException(status_code=503, detail="Monitoring service not available")
-    
-    return model_manager.monitoring_service.get_current_metrics()
-
-@app.get("/monitoring/summary")
-async def get_monitoring_summary():
-    """Get monitoring metrics summary for decision engine"""
-    if not model_manager.monitoring_service:
-        raise HTTPException(status_code=503, detail="Monitoring service not available")
-    
-    return model_manager.monitoring_service.get_metrics_summary()
-
-@app.get("/decision/history")
-async def get_decision_history(limit: int = 10):
-    """Get decision engine history"""
-    if not model_manager.decision_engine:
-        raise HTTPException(status_code=503, detail="Decision engine not available")
-    
-    return {
-        "history": model_manager.decision_engine.get_decision_history(limit=limit),
-        "total_decisions": len(model_manager.decision_engine.decision_history)
-    }
-
-# Example usage endpoint
-@app.get("/example")
-async def get_example_request():
-    """Get an example prediction request"""
-    if not model_manager.is_loaded:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    # Generate example features (random values)
-    np.random.seed(42)
-    example_features = np.random.randn(len(model_manager.feature_names)).tolist()
-    
-    return {
-        "example_request": {
-            "features": example_features
-        },
-        "curl_example": f"""
-curl -X POST "http://localhost:8000/predict" \\
-     -H "Content-Type: application/json" \\
-     -d '{{"features": {example_features}}}'
-        """.strip(),
-        "feature_names": model_manager.feature_names
-    }
-
 def main():
     """Main function to run the API server"""
-    logger.info("Starting ML Model API Server...")
+    parser = argparse.ArgumentParser(description='ML Model API Server')
+    parser.add_argument('--model', type=str, help='Path to model file')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
+    args = parser.parse_args()
     
-    # Configuration
-    host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8000"))
-    debug = os.getenv("DEBUG", "False").lower() == "true"
+    # Initialize model manager with specified model
+    global model_manager
+    model_manager = ModelManager(args.model)
     
-    logger.info(f"Server configuration:")
-    logger.info(f"  Host: {host}")
-    logger.info(f"  Port: {port}")
-    logger.info(f"  Debug: {debug}")
+    # Try to load model
+    if args.model:
+        success = model_manager.load_model(args.model)
+        if not success:
+            logger.error(f"Failed to load model: {args.model}")
+            exit(1)
     
-    # Run the server
-    # Use 'app' directly to avoid double-import and registry errors when running as __main__
+    print(f"\n🚀 Starting ML Model API Server...")
+    print(f"📊 Model: {args.model if args.model else 'Interactive selection'}")
+    print(f"🌐 Server: http://{args.host}:{args.port}")
+    print(f"📚 API Docs: http://{args.host}:{args.port}/docs")
+    
     uvicorn.run(
         app,
-        host=host,
-        port=port,
-        log_level="info"
+        host=args.host,
+        port=args.port,
+        reload=args.reload
     )
 
 if __name__ == "__main__":

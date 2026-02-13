@@ -2,7 +2,7 @@
 # Cleanup Script for GitHub Repository
 # Removes temporary files, logs, and cache before pushing to GitHub
 
-echo "🧹 Cleaning up codebase for GitHub..."
+echo "Cleaning up codebase for GitHub..."
 
 # Remove log files
 echo "Removing log files..."
@@ -35,9 +35,9 @@ for dir in models data logs reports input_models; do
     fi
 done
 
-echo "✅ Cleanup completed!"
+echo "Cleanup completed!"
 echo ""
-echo "📋 Next steps:"
+echo "Next steps:"
 echo "1. Review changes: git status"
 echo "2. Add files: git add ."
 echo "3. Commit: git commit -m 'Initial commit: MLOps project'"
