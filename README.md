@@ -15,17 +15,20 @@ A **production-ready, self-adaptive MLOps platform** for automated deployment an
 
 ## 🌟 Key Features
 
-### 🤖 **Self-Adaptive ML System**
+### 🤖 **Fully Autonomous ML System**
+- ✅ **Continuous Drift Monitoring** - Runs 24/7 as separate Docker service
 - ✅ **Automated Drift Detection** - Real-time monitoring using PSI, KL Divergence, and KS Test
-- ✅ **Auto-Retraining** - Triggers automatically when drift exceeds threshold
+- ✅ **Auto-Retraining** - Triggers automatically when drift exceeds threshold (no manual intervention)
 - ✅ **Auto-Rollback** - Reverts to stable version on performance degradation
 - ✅ **Version Management** - Automatic version incrementing and complete audit trail
+- ✅ **Lifecycle-Tied Automation** - Starts/stops with `docker-compose` (clean architecture)
 
 ### 📊 **Production-Grade Infrastructure**
 - 🎯 **ML Model API** - FastAPI-based REST API with async support
+- 🔄 **Drift Monitor Service** - Separate container for autonomous monitoring
 - 🎨 **Professional Web Dashboard** - Interactive UI with real-time predictions
 - 📈 **Monitoring Stack** - Prometheus + Grafana with custom dashboards
-- 🐳 **Docker Deployment** - Multi-container orchestration
+- 🐳 **Docker Deployment** - Multi-container orchestration (6 services)
 - 🔄 **CI/CD Pipeline** - Automated testing and deployment
 
 ### 🔬 **Advanced MLOps Capabilities**
@@ -37,6 +40,7 @@ A **production-ready, self-adaptive MLOps platform** for automated deployment an
   - Automated model versioning (v1.0.0 → v1.1.0 → ...)
   - Complete model history tracking
   - Rollback event logging
+  - **Continuous monitoring loop** (configurable interval)
 - 📈 **Performance Monitoring**:
   - Real-time metrics via Prometheus
   - Custom Grafana dashboards
@@ -134,17 +138,33 @@ docker-compose -f docker/docker-compose.yml up -d
        │                 │                 │
        └─────────────────┼─────────────────┘
                          │
-        ┌────────────────┼────────────────┬────────────────┐
-        │                │                │                │
-        ▼                ▼                ▼                ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  Prometheus  │  │    Redis     │  │   Grafana    │  │ Drift Monitor│
-│  (Metrics)   │  │   (Cache)    │  │ (Dashboard)  │  │ (Automated)  │
-│  Port 9090   │  │  Port 6379   │  │  Port 3000   │  │              │
-└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
+        ┌────────────────┼────────────────┬────────────────┬────────────────┐
+        │                │                │                │                │
+        ▼                ▼                ▼                ▼                ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  Prometheus  │  │    Redis     │  │   Grafana    │  │Drift Monitor │  │   Models     │
+│  (Metrics)   │  │   (Cache)    │  │ (Dashboard)  │  │(Autonomous)  │  │  (Storage)   │
+│  Port 9090   │  │  Port 6379   │  │  Port 3000   │  │ Continuous   │  │              │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
+                                                              │
+                                                              │ Monitors & Retrains
+                                                              ▼
+                                                       ┌──────────────┐
+                                                       │ Auto-Retrain │
+                                                       │ Auto-Rollback│
+                                                       └──────────────┘
 ```
 
-### **MLOps Workflow**
+### **Docker Services (6 Total)**
+
+1. **ml-api** - FastAPI application serving predictions
+2. **drift-monitor** - Autonomous monitoring service (NEW!)
+3. **prometheus** - Metrics collection
+4. **grafana** - Visualization dashboards
+5. **redis** - Caching layer
+6. **nginx** - Load balancer and reverse proxy
+
+### **MLOps Workflow - Fully Autonomous**
 
 ```
 ┌─────────────┐
@@ -164,21 +184,30 @@ docker-compose -f docker/docker-compose.yml up -d
        ▼
 ┌─────────────────────────────────────────────────────────┐
 │              Production Deployment                       │
-│  • Docker Container                                      │
+│  • Docker Container (ml-api)                             │
 │  • FastAPI Server                                        │
 │  • Prometheus Metrics                                    │
 └──────┬──────────────────────────────────────────────────┘
        │
        ▼
 ┌─────────────────────────────────────────────────────────┐
-│         Real-time Drift Detection                        │
+│    Autonomous Drift Monitoring Service (24/7)           │
+│  • Runs as separate Docker container                    │
+│  • Continuous monitoring loop (every 1 hour)            │
+│  • Lifecycle tied to docker-compose                     │
+│  • Single instance (no race conditions)                 │
+└──────┬──────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────┐
+│         Real-time Drift Detection (Automated)            │
 │  • PSI Calculation (Population Stability Index)          │
 │  • KL Divergence (Distribution Comparison)               │
 │  • KS Test (Statistical Significance)                    │
 │  • Threshold: 0.2 (configurable)                         │
 └──────┬──────────────────────────────────────────────────┘
        │
-       ├─── Drift < Threshold ──► Continue Monitoring
+       ├─── Drift < Threshold ──► Continue Monitoring (loop back)
        │
        └─── Drift > Threshold ──┐
                                  │
@@ -189,6 +218,7 @@ docker-compose -f docker/docker-compose.yml up -d
                     │  • Model Training      │
                     │  • Validation          │
                     │  • Deployment          │
+                    │  (NO MANUAL TRIGGER)   │
                     └────────┬───────────────┘
                              │
                              ▼
@@ -198,7 +228,7 @@ docker-compose -f docker/docker-compose.yml up -d
                     │  • Degradation Check   │
                     └────────┬───────────────┘
                              │
-                             ├─── Performance OK ──► Continue
+                             ├─── Performance OK ──► Continue Monitoring
                              │
                              └─── Degradation ──┐
                                                  │
@@ -208,7 +238,14 @@ docker-compose -f docker/docker-compose.yml up -d
                                     │  • Revert to Previous  │
                                     │  • Log Event           │
                                     │  • Alert Team          │
+                                    │  (NO MANUAL TRIGGER)   │
                                     └────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+                    FULLY AUTONOMOUS LOOP
+        docker-compose up → automation starts
+        docker-compose down → automation stops
+═══════════════════════════════════════════════════════════════
 ```
 
 ---
@@ -274,6 +311,73 @@ curl http://localhost:8000/models/history
 
 ## 🔬 Advanced Features
 
+### **0. Autonomous Monitoring Service** ⭐ **NEW!**
+
+The platform now includes a **fully autonomous drift monitoring service** that runs 24/7 as a separate Docker container.
+
+**Architecture**: Option D - Fully autonomous control loop inside the running system ✅
+
+#### **How It Works:**
+
+```
+docker-compose up → All services start (including drift-monitor)
+  ├─ ml-api (serving predictions)
+  ├─ drift-monitor (continuous monitoring) ← AUTONOMOUS
+  ├─ prometheus (metrics)
+  ├─ grafana (dashboards)
+  ├─ redis (caching)
+  └─ nginx (load balancer)
+
+docker-compose down → All services stop cleanly
+```
+
+#### **Monitoring Loop:**
+
+```python
+while True:
+    check_drift()           # Every hour (configurable)
+    if drift_detected:
+        trigger_retraining()  # Automatic, no manual intervention
+    sleep(3600)
+```
+
+#### **Configuration:**
+
+Edit `docker/docker-compose.yml`:
+
+```yaml
+drift-monitor:
+  environment:
+    - ENABLE_AUTOMATION=true           # Enable/disable
+    - DRIFT_CHECK_INTERVAL=3600        # Check every hour
+    - DRIFT_THRESHOLD=0.2              # Drift threshold
+```
+
+#### **View Monitoring Logs:**
+
+```bash
+# Real-time logs
+docker logs -f ml-drift-monitor
+
+# Check if running
+docker ps | grep drift-monitor
+```
+
+#### **Why This Architecture?**
+
+✅ **Clean lifecycle management** - Tied to docker-compose  
+✅ **No race conditions** - Single monitoring instance  
+✅ **No orphaned processes** - Stops with docker-compose down  
+✅ **Production-grade** - Separate container, proper separation of concerns  
+
+❌ **NOT using cron** - External dependency  
+❌ **NOT using OS service** - Hard to manage  
+❌ **NOT inside FastAPI** - Would create 3 monitors if scaled to 3 instances  
+
+**See [docs/MONITORING_SERVICE.md](docs/MONITORING_SERVICE.md) for complete documentation.**
+
+---
+
 ### **1. Drift Detection**
 
 The platform continuously monitors for data drift using three statistical methods:
@@ -282,34 +386,25 @@ The platform continuously monitors for data drift using three statistical method
 - **KL Divergence**: Quantifies distribution differences
 - **KS Test**: Statistical significance testing
 
-**Configuration:**
-```python
-# src/drift_detection_enhanced.py
-detector = EnhancedDriftDetector(
-    reference_data_path='data/dataset.csv',
-    thresholds={
-        'psi': 0.2,      # PSI threshold
-        'ks': 0.05,      # KS test p-value
-        'kl': 0.1        # KL divergence threshold
-    }
-)
-```
-
-**Run Drift Detection:**
+**Manual Testing** (for development):
 ```bash
 python src/drift_detection_enhanced.py
 ```
 
+**Production**: Runs automatically via drift-monitor service (see above)
+
 ### **2. Automated Retraining**
 
-When drift exceeds the threshold, the platform automatically:
+When drift exceeds the threshold, the **autonomous monitoring service** automatically:
 1. Increments model version (v1.0.0 → v1.1.0)
 2. Trains new model on latest data
 3. Validates performance
 4. Deploys if metrics are acceptable
 5. Updates model history
 
-**Trigger Retraining:**
+**Production**: Triggered automatically by drift-monitor service (no manual intervention)
+
+**Manual Testing** (for development):
 ```bash
 python src/auto_retraining.py
 ```

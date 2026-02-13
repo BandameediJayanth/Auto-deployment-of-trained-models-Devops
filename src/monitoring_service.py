@@ -60,11 +60,9 @@ class DriftMonitoringService:
         # Initialize drift detector
         self.drift_detector = EnhancedDriftDetector(
             reference_data_path=reference_data_path,
-            thresholds={
-                'psi': drift_threshold,
-                'ks': 0.05,
-                'kl': 0.1
-            }
+            psi_threshold=drift_threshold,
+            ks_threshold=0.05,
+            kl_threshold=0.1
         )
         
         # Initialize retraining system
